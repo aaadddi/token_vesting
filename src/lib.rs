@@ -1,0 +1,192 @@
+// Vesting application
+// Employer account - Employer adds amount when vested transfers to employees
+// 
+
+pub mod constants;
+pub mod error;
+pub mod instructions;
+pub mod state;
+
+use anchor_lang::prelude::*;
+use anchor_spl::associated_token::AssociatedToken;
+use anchor_spl::{token_interface::Mint, token_interface::TokenInterface};
+use anchor_spl::token_interface::TokenAccount;
+declare_id!("4uN1uWZ4enkyLsdJRRrTJvATF1Q4ti1TCy4fH1r8brQT");
+
+#[program]
+pub mod vesting {
+
+    use super::*;
+
+    pub fn create_vesting_account(ctx: Context<CreateVestingAccount>, 
+        company_name: String
+    )-> Result<()> {
+        // to modify a refernced account need to derefernced using '*'
+        // tells rust want to work with actual data not with just reference
+        *ctx.accounts.vesting_account = VestingAccount {
+            owner: ctx.accounts.signer.key(),
+            mint: ctx.accounts.mint.key(),
+            treasury_token_account: ctx.accounts.treasury_token_account.key(),
+            company_name,
+            treasury_bump: ctx.bumps.treasury_token_account,
+            bump: ctx.bumps.vesting_account,
+        };
+        Ok(())
+    }
+
+    pub fn create_employee_account(ctx: Context<CreateEmployeeAccount>, start_time: i64, 
+        end_time: i64,
+        total_amount: u64,
+        cliff_time: i64,
+        )-> Result<()> {
+
+        *ctx.accounts.employee_account = EmployeeAccount {
+            beneficeary: ctx.accounts.beneficeary.key(),
+            start_time,
+            end_time,
+            cliff_time,
+            vesting_account: ctx.accounts.vesting_account.key(),
+            total_amount,
+            total_withdrawn: 0,
+            bump: ctx.bumps.employee_account
+        };
+
+        Ok(())
+    }
+
+    pub fn claim_amount(ctx: Context<ClaimAmout>) -> Result<()> {
+        Ok(())
+    }
+ 
+    
+}
+
+
+#[derive(Accounts)]
+#[instruction(company_name: String)]
+pub struct CreateVestingAccount <'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+
+    #[account(
+            init,
+            space = 8 + VestingAccount::INIT_SPACE, 
+            payer=signer, 
+            seeds= [company_name.as_ref()],
+            bump
+        )]
+    pub vesting_account: Account<'info, VestingAccount>,
+
+
+    pub mint: InterfaceAccount<'info, Mint>,
+    
+    #[account(
+        init,
+        token::mint = mint,
+        token::authority = treasury_token_account,
+        payer = signer,
+        seeds = [b"vesting_treasury",company_name.as_bytes()],
+        bump
+    )]
+    pub treasury_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
+    pub system_program: Program<'info, System>,
+
+}
+
+#[derive(Accounts)]
+pub struct CreateEmployeeAccount<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+
+    pub beneficeary: SystemAccount<'info>,
+
+    #[account(
+        has_one =  owner
+    )]
+    pub vesting_account: Account<'info,  VestingAccount>,
+
+    #[account(
+        init,
+        payer = owner,
+        space = 8 + EmployeeAccount::INIT_SPACE,
+        seeds = [b"employee_vesting",beneficeary.key().as_ref() ,vesting_account.key().as_ref()],
+        bump
+    )]
+    pub employee_account : Account<'info, EmployeeAccount>,
+
+    pub system_program: Program<'info, System>
+}
+
+
+#[derive(Accounts)]
+#[instruction(company_name: String)]
+
+pub struct ClaimAmout<'info> {
+    #[account(mut)]
+    pub beneficeary: Signer<'info>,
+
+
+    #[account(
+        mut,
+        seeds = [b"employee_vesting", beneficeary.key().as_ref(), vesting_account.key().as_ref()],
+        bump = employee_account.bump,
+        has_one = beneficeary,
+        has_one = vesting_account,
+    )]
+    pub employee_account: Account<'info, EmployeeAccount>,
+
+    #[account(
+        mut,
+        seeds = [company_name.as_ref()],
+        bump = vesting_account.bump,
+        has_one = treasury_token_account,
+        has_one = mint,
+
+    )]
+    pub vesting_account : Account<'info,VestingAccount>,
+    pub mint: InterfaceAccount<'info, Mint>,
+
+    #[account(mut)]
+    pub treasury_token_account: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(
+        init_if_needed,
+        payer = beneficeary,
+        associated_token::mint = mint,
+        associated_token::authority = beneficeary,
+        associated_token::token_program = token_program
+    )]
+    pub employee_token_account: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
+    pub associated_token_program: Program<'info,AssociatedToken>,
+    pub system_program: Program<'info, System>,
+
+}
+
+
+#[account]
+#[derive(InitSpace)]
+pub struct VestingAccount {
+    pub owner : Pubkey,
+    pub mint: Pubkey,
+    pub treasury_token_account: Pubkey,
+    #[max_len(50)]
+    pub company_name: String,
+    pub treasury_bump: u8,
+    pub bump: u8
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct EmployeeAccount {
+    pub beneficeary : Pubkey,
+    pub start_time: i64, // using i64 because its going to be stored in unix timezone
+    pub end_time: i64,
+    pub cliff_time: i64, // how much time a employee has to wait before any of there token is unlocked
+    pub vesting_account: Pubkey, // to keep track of vesting account
+    pub total_amount: u64, // to keep track of how much amount is vested
+    pub total_withdrawn: u64, // to keep track of how much they have withdrawn and how much is left from total_amount
+    pub bump: u8
+}
