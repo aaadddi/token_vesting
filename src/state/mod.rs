@@ -1,10 +1,5 @@
-use anchor_lang::prelude::*;
+pub mod employee_account;
+pub mod vesting_account;
 
-#[account]
-#[derive(InitSpace)]
-pub struct Counter {
-    pub pubkey: Pubkey,
-    pub authority: Pubkey,
-    pub count: u64,
-    pub bump: u8,
-}
+pub use employee_account::*;
+pub use vesting_account::*;
