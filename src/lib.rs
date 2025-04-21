@@ -1,10 +1,14 @@
+#![allow(unexpected_cfgs)]
+#![allow(clippy::result_large_err)]
+
 use anchor_lang::prelude::*;
 
 pub mod constants;
 pub mod error;
 pub mod instructions;
 pub mod state;
-
+use std::*;
+// use core::*;
 use error::ErrorCode;
 use instructions:: *;
 use state::*;
@@ -109,8 +113,9 @@ pub mod vesting {
 
         let decimals = ctx.accounts.mint.decimals;
 
-        transfer_checked(cpi_context, claimable_amount as u64, decimals);
+        transfer_checked(cpi_context, claimable_amount as u64, decimals)?;
 
+        ctx.accounts.employee_account.total_withdrawn += claimable_amount;
 
 
         Ok(())
